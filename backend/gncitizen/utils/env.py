@@ -7,7 +7,7 @@ from flasgger import Swagger
 from flask_jwt_extended import JWTManager
 from flask_sqlalchemy import SQLAlchemy
 from flask_admin import Admin
-
+from flask_ckeditor import CKEditor, CKEditorField 
 
 from gncitizen.utils.toml import load_toml
 
@@ -19,7 +19,6 @@ with open(str((ROOT_DIR / "VERSION"))) as v:
 DEFAULT_CONFIG_FILE = ROOT_DIR / "config/default_config.toml"
 GNC_EXTERNAL_MODULE = ROOT_DIR / "external_modules"
 ALLOWED_EXTENSIONS = set(["png", "jpg", "jpeg"])
-MEDIA_DIR = ROOT_DIR / "media"
 
 
 def get_config_file_path(config_file=None):
@@ -41,10 +40,13 @@ def load_config(config_file=None):
 
 
 app_conf = load_config()
+MEDIA_DIR = str(ROOT_DIR / app_conf["MEDIA_FOLDER"])
 SQLALCHEMY_DATABASE_URI = app_conf["SQLALCHEMY_DATABASE_URI"]
 db = SQLAlchemy()
 
 jwt = JWTManager()
+
+ckeditor = CKEditor()
 
 swagger_template = {
     # "openapi": "3.0.0",
@@ -67,7 +69,8 @@ admin = Admin(
     url="/".join([urlparse(app_conf["API_ENDPOINT"]).path, "admin"]),
 )
 
-taxhub_url = load_config()["API_TAXHUB"]
+
+taxhub_url = app_conf.get("API_TAXHUB", "")
 taxhub_lists_url = taxhub_url + "biblistes/"
 
 
