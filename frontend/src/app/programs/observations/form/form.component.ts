@@ -1,13 +1,13 @@
-import { MAP_CONFIG } from './../../../../conf/map.config';
-import * as L from 'leaflet';
+import { MAP_CONFIG } from "./../../../../conf/map.config";
+import * as L from "leaflet";
 import {
   AbstractControl,
   FormControl,
   FormGroup,
   ValidatorFn,
   Validators
-  } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+} from "@angular/forms";
+import { ActivatedRoute } from "@angular/router";
 import {
   AfterViewInit,
   Component,
@@ -19,36 +19,32 @@ import {
   Output,
   ViewChild,
   ViewEncapsulation
-  } from '@angular/core';
-import { AppConfig } from '../../../../conf/app.config';
+} from "@angular/core";
+import { AppConfig } from "../../../../conf/app.config";
 import {
   debounceTime,
   distinctUntilChanged,
   map,
   share,
   tap
-  } from 'rxjs/operators';
-import { FeatureCollection } from 'geojson';
-import { GncProgramsService } from '../../../api/gnc-programs.service';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { LeafletMouseEvent } from 'leaflet';
-import { NgbDate } from '@ng-bootstrap/ng-bootstrap';
-import { Observable } from 'rxjs';
+} from "rxjs/operators";
+import { FeatureCollection } from "geojson";
+import { GncProgramsService } from "../../../api/gnc-programs.service";
+import { HttpClient, HttpHeaders } from "@angular/common/http";
+import { LeafletMouseEvent } from "leaflet";
+import { NgbDate } from "@ng-bootstrap/ng-bootstrap";
+import { Observable } from "rxjs";
 import {
   ObservationFeature,
   PostObservationResponse,
   TaxonomyList,
   TaxonomyListItem
-  } from '../observation.model';
-import 'leaflet-gesture-handling';
-import 'leaflet-fullscreen/dist/Leaflet.fullscreen';
-
-
-
-
+} from "../observation.model";
+import "leaflet-gesture-handling";
+import "leaflet-fullscreen/dist/Leaflet.fullscreen";
+import { ToastrService } from "ngx-toastr";
 
 declare let $: any;
-
 
 const map_conf = {
   GEOLOCATION_CONTROL_POSITION: "topright",
@@ -60,7 +56,7 @@ const map_conf = {
     color: "red",
     dashArray: "4"
   }
-}
+};
 const taxonSelectInputThreshold = AppConfig.taxonSelectInputThreshold;
 const taxonAutocompleteInputThreshold =
   AppConfig.taxonAutocompleteInputThreshold;
@@ -105,28 +101,31 @@ export class ObsFormComponent implements AfterViewInit {
   @Output("newObservation") newObservation: EventEmitter<
     ObservationFeature
   > = new EventEmitter();
-  @ViewChild("photo") photo: ElementRef;
+  @ViewChild("photo", { static: true }) photo: ElementRef;
   today = new Date();
   program_id: any;
-  obsForm = new FormGroup({
-    cd_nom: new FormControl("", Validators.required),
-    count: new FormControl("1", Validators.required),
-    comment: new FormControl(""),
-    date: new FormControl(
-      {
-        year: this.today.getFullYear(),
-        month: this.today.getMonth() + 1,
-        day: this.today.getDate()
-      },
-      [Validators.required, ngbDateMaxIsToday()]
-    ),
-    photo: new FormControl(""),
-    geometry: new FormControl(this.coords ? this.coords : "", [
-      Validators.required,
-      geometryValidator()
-    ]),
-    id_program: new FormControl(this.program_id)
-  });
+  obsForm = new FormGroup(
+    {
+      cd_nom: new FormControl("", Validators.required),
+      count: new FormControl("1", Validators.required),
+      comment: new FormControl(""),
+      date: new FormControl(
+        {
+          year: this.today.getFullYear(),
+          month: this.today.getMonth() + 1,
+          day: this.today.getDate()
+        },
+        [Validators.required, ngbDateMaxIsToday()]
+      ),
+      photo: new FormControl(""),
+      geometry: new FormControl(this.coords ? this.coords : "", [
+        Validators.required,
+        geometryValidator()
+      ]),
+      id_program: new FormControl(this.program_id)
+    }
+    //{ updateOn: "submit" }
+  );
   taxonSelectInputThreshold = taxonSelectInputThreshold;
   taxonAutocompleteInputThreshold = taxonAutocompleteInputThreshold;
   autocomplete = "isOff";
@@ -141,6 +140,7 @@ export class ObsFormComponent implements AfterViewInit {
   selectedTaxon: any;
   hasZoomAlert: boolean;
   zoomAlertTimeout: any;
+  AppConfig = AppConfig;
 
   disabledDates = (date: NgbDate, current: { month: number }) => {
     const date_impl = new Date(date.year, date.month - 1, date.day);
@@ -179,8 +179,12 @@ export class ObsFormComponent implements AfterViewInit {
             cd_nom: this.taxa[taxon]["taxref"]["cd_nom"],
             icon:
               this.taxa[taxon]["medias"].length >= 1
-                ? this.taxa[taxon]["medias"][0]["url"]
-                : "assets/Azure-Commun-019.JPG"
+                ? // ? this.taxa[taxon]["medias"][0]["url"]
+                  AppConfig.API_TAXHUB +
+                  "/tmedias/thumbnail/" +
+                  this.taxa[taxon]["medias"][0]["id_media"] +
+                  "?h=20"
+                : "assets/default_image.png"
           });
         }
       }
@@ -192,7 +196,8 @@ export class ObsFormComponent implements AfterViewInit {
     @Inject(LOCALE_ID) readonly localeId: string,
     private http: HttpClient,
     private programService: GncProgramsService,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private toastr: ToastrService
   ) {}
 
   ngAfterViewInit() {
@@ -210,6 +215,8 @@ export class ObsFormComponent implements AfterViewInit {
               this.taxaCount = Object.keys(this.taxa).length;
               if (this.taxaCount >= this.taxonAutocompleteInputThreshold) {
                 this.inputAutoCompleteSetup();
+              } else if (this.taxaCount == 1) {
+                this.onTaxonSelected(this.taxa[0]);
               }
             }),
             share()
@@ -232,17 +239,21 @@ export class ObsFormComponent implements AfterViewInit {
           }
         }).addTo(formMap);
 
-        L.control.locate({
-          position: map_conf.GEOLOCATION_CONTROL_POSITION,
-          getLocationBounds: locationEvent =>
-            locationEvent.bounds.extend(L.LatLngBounds),
-          onLocationError: locationEvent =>
-            alert('Vous semblez être en dehors de la zone du programme'),
-          locateOptions: {
-            enableHighAccuracy: map_conf.GEOLOCATION_HIGH_ACCURACY
-          }
-        })
-        .addTo(formMap);
+        L.control
+          .locate({
+            position: map_conf.GEOLOCATION_CONTROL_POSITION,
+            getLocationBounds: locationEvent =>
+              locationEvent.bounds.extend(L.LatLngBounds),
+            onLocationError: locationEvent => {
+              let msg = "Vous semblez être en dehors de la zone du programme.";
+              this.toastr.error(msg, "", { positionClass: "toast-top-right" });
+              //alert("Vous semblez être en dehors de la zone du programme")
+            },
+            locateOptions: {
+              enableHighAccuracy: map_conf.GEOLOCATION_HIGH_ACCURACY
+            }
+          })
+          .addTo(formMap);
 
         let ZoomViewer = L.Control.extend({
           onAdd: () => {
@@ -273,7 +284,6 @@ export class ObsFormComponent implements AfterViewInit {
         const maxBounds: L.LatLngBounds = programArea.getBounds();
         formMap.fitBounds(maxBounds);
         formMap.setMaxBounds(maxBounds.pad(0.01));
-
 
         // Set initial observation marker from main map if already spotted
         let myMarker = null;
@@ -339,7 +349,8 @@ export class ObsFormComponent implements AfterViewInit {
       (data: PostObservationResponse) => {
         obs = data.features[0];
       },
-      err => alert(err),
+      err => console.log(err),
+      //alert(err),
       () => {
         this.newObservation.emit(obs);
       }
@@ -397,4 +408,6 @@ export class ObsFormComponent implements AfterViewInit {
       httpOptions
     );
   }
+
+  getMediaUrl() {}
 }

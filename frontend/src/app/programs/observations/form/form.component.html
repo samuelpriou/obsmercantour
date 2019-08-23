@@ -1,4 +1,9 @@
-<form id="obsForm" [formGroup]="obsForm" (ngSubmit)="onFormSubmit()">
+<form
+  id="obsForm"
+  [formGroup]="obsForm"
+  #formRef="ngForm"
+  (ngSubmit)="onFormSubmit()"
+>
   <!--
     <div class="alert alert-primary rounded-0" role="alert">
       {{ obsForm.value | json }}
@@ -27,7 +32,7 @@
             *ngFor="let s of (surveySpecies$ | async)"
             [value]="s.taxref.cd_nom"
           >
-            {{ s.nom?.nom_francais }} (<i>{{ s.taxref.nom_complet }}</i
+            {{ !!s.nom_francais ? s.nom_francais : s.taxref[0].nom_vern }} (<i>{{ s.taxref.nom_complet }}</i
             >)
           </option>
         </select>
@@ -45,17 +50,17 @@
         [class.ng-invalid]="!selectedTaxon"
       >
         <div *ngFor="let s of (surveySpecies$ | async)">
-          <div class="obs-img" [class.selected]="isSelectedTaxon(s)">
+          <div class="obs-img default-img" [class.selected]="isSelectedTaxon(s)">
             <img
               [src]="
                 s.medias && !!s.medias.length
-                  ? s.medias[0]?.url
-                  : 'assets/Azure-Commun-019.JPG'
+                  ? AppConfig.API_TAXHUB + '/tmedias/thumbnail/' + s.medias[0].id_media + '?h=100&v=100'
+                  : 'assets/default_image.png'
               "
-              [alt]="s.nom?.nom_francais"
+              [alt]="!!s.nom_francais ? s.nom_francais : s.taxref.nom_vern"
               (click)="onTaxonSelected(s)"
             />
-            <span>{{ s.nom?.nom_francais }}</span>
+            <span>{{ !!s.nom_francais ? s.nom_francais : s.taxref.nom_vern }}</span>
           </div>
         </div>
       </div>
@@ -182,6 +187,14 @@
         >
       </p>
     </div>
-    <p class="ng-invalid pl-1 ml-1">Champs manquants</p>
+    <p
+      class="ng-invalid ng-dirty pl-1 ml-1"
+      *ngIf="
+        (obsForm.get('date').invalid || obsForm.get('count').invalid) &&
+        (formRef.touched || formRef.dirty)
+      "
+    >
+      Champs manquants
+    </p>
   </div>
 </form>
