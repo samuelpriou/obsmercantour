@@ -20,7 +20,7 @@ mistune==0.8.4
 passlib==1.7.1
 psycopg2-binary==2.8.3
 PyJWT==1.7.1
-PyYAML==5.1.2
+PyYAML==5.4
 requests==2.22.0
 Shapely==1.6.4.post2
 six==1.12.0
